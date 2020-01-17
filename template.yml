@@ -1,0 +1,1027 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Build Step Functions to deploy a Personalize Campaign
+
+Parameters:
+  Test:
+    Type: String
+    Description: More to come surely
+
+
+Resources:
+
+  CreateDatasetGroupLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateDatasetGroupLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+  CreateDatasetGroupStatusLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateDatasetGroupStatusLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+  CreateDatasetLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateDatasetLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+  CreateDatasetStatusLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateDatasetStatusLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+  DataSetImportLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt DataSetImportLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+  DataSetImportStatusLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt DataSetImportStatusLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+  CreateSolutionLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateSolutionLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+  CreateSolutionStatusLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateSolutionStatusLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+  CreateCampaignLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateCampaignLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+  CreateCampaignStatusLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateCampaignStatusLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+            return {"Done": true}
+
+
+  PersonalizeCampaignStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      RoleArn: !GetAtt PersonalizeCampaignStateMachineRole.Arn
+      DefinitionString:
+        !Sub
+          - |-
+            {
+              "StartAt": "CreateDatasetGroup",
+              "States": {
+                "CreateDatasetGroup": {
+                  "Type": "Task",
+                  "Resource": "${CreateDatasetGroupLambdaArn}",
+                  "Parameters": {"interesting": "verytrue", "Message": "$.Message"},
+                  "Next": "DatasetGroupWait"
+                },
+                "DatasetGroupWait": {
+                  "Type": "Wait",
+                  "Seconds": 30,
+                  "Next": "DatasetGroupStatus"
+                },
+                "DatasetGroupStatus": {
+                  "Type": "Task",
+                  "Resource": "${CreateDatasetGroupStatusLambdaArn}",
+                  "Next": "IsDatasetGroupFinished"
+                },
+                "IsDatasetGroupFinished": {
+                  "Type": "Choice",
+                  "Default": "DatasetGroupWait",
+                  "Choices": [
+                    {
+                      "Variable": "$.DatasetGroupStatus",
+                      "StringEquals": "FAILED",
+                      "Next": "DatasetGroupFailed"
+                    },
+                    {
+                      "Variable": "$.DatasetGroupStatus",
+                      "StringEquals": "COMPLETED",
+                      "Next": "ParallelDatasets"
+                    }
+                  ]
+                },
+                "DatasetGroupFailed": {
+                  "Type": "Fail",
+                  "Cause": "Create Dataset Group failed",
+                  "Error": "Create Dataset Group failed"
+                },
+                "ParallelDatasets": {
+                  "Type": "Parallel",
+                  "Next": "ParallelCampaigns",
+                  "Branches": [
+                    {
+                      "StartAt": "CreateUserDataset",
+                      "States": {
+                        "CreateUserDataset": {
+                          "Type": "Task",
+                          "Resource": "${CreateDatasetLambdaArn}",
+                          "Next": "IsUserDatasetFinished"
+                        },
+                        "UserDatasetWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "UserDataSetStatus"
+                        },
+                        "UserDataSetStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateDatasetStatusLambdaArn}",
+                          "Next": "IsUserDatasetFinished"
+                        },
+                        "IsUserDatasetFinished": {
+                          "Type": "Choice",
+                          "Default": "UserDatasetWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.DatasetStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "UserDatasetFailed"
+                            },
+                            {
+                              "Variable": "$.DatasetStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "UserDatasetImport"
+                            }
+                          ]
+                        },
+                        "UserDatasetFailed": {
+                          "Type": "Fail",
+                          "Cause": "User Dataset failed",
+                          "Error": "User Dataset failed"
+                        },
+                        "UserDatasetImport": {
+                          "Type": "Task",
+                          "Resource": "${DataSetImportLambdaArn}",
+                          "Next": "UserImportWait"
+                        },
+                        "UserImportWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "UserImportStatus"
+                        },
+                        "UserImportStatus": {
+                          "Type": "Task",
+                          "Resource": "${DataSetImportStatusLambdaArn}",
+                          "Next": "IsUserImportFinished"
+                        },
+                        "IsUserImportFinished": {
+                          "Type": "Choice",
+                          "Default": "UserImportWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.ImportStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "UserImportFailed"
+                            },
+                            {
+                              "Variable": "$.ImportStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "UserDatasetEnd"
+                            }
+                          ]
+                        },
+                        "UserImportFailed": {
+                          "Type": "Fail",
+                          "Cause": "User Dataset Import failed",
+                          "Error": "User Dataset Import failed"
+                        },
+                        "UserDatasetEnd": {
+                          "Type": "Pass",
+                          "End": true
+                        }
+                      }
+                    },
+                    {
+                      "StartAt": "CreateInteractionDataset",
+                      "States": {
+                        "CreateInteractionDataset": {
+                          "Type": "Task",
+                          "Resource": "${CreateDatasetLambdaArn}",
+                          "Next": "IsInteractionDatasetFinished"
+                        },
+                        "InteractionDatasetWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "InteractionDataSetStatus"
+                        },
+                        "InteractionDataSetStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateDatasetStatusLambdaArn}",
+                          "Next": "IsInteractionDatasetFinished"
+                        },
+                        "IsInteractionDatasetFinished": {
+                          "Type": "Choice",
+                          "Default": "InteractionDatasetWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.DatasetStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "InteractionDatasetFailed"
+                            },
+                            {
+                              "Variable": "$.DatasetStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "InteractionDatasetImport"
+                            }
+                          ]
+                        },
+                        "InteractionDatasetFailed": {
+                          "Type": "Fail",
+                          "Cause": "Interaction Dataset failed",
+                          "Error": "Interaction Dataset failed"
+                        },
+                        "InteractionDatasetImport": {
+                          "Type": "Task",
+                          "Resource": "${DataSetImportLambdaArn}",
+                          "Next": "InteractionImportWait"
+                        },
+                        "InteractionImportWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "InteractionImportStatus"
+                        },
+                        "InteractionImportStatus": {
+                          "Type": "Task",
+                          "Resource": "${DataSetImportStatusLambdaArn}",
+                          "Next": "IsInteractionImportFinished"
+                        },
+                        "IsInteractionImportFinished": {
+                          "Type": "Choice",
+                          "Default": "InteractionImportWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.ImportStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "InteractionImportFailed"
+                            },
+                            {
+                              "Variable": "$.ImportStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "InteractionDatasetEnd"
+                            }
+                          ]
+                        },
+                        "InteractionImportFailed": {
+                          "Type": "Fail",
+                          "Cause": "Interaction Dataset Import failed",
+                          "Error": "Interaction Dataset Import failed"
+                        },
+                        "InteractionDatasetEnd": {
+                          "Type": "Pass",
+                          "End": true
+                        }
+                      }
+                    },
+                    {
+                      "StartAt": "CreateItemDataset",
+                       "States": {
+                        "CreateItemDataset": {
+                          "Type": "Task",
+                          "Resource": "${CreateDatasetLambdaArn}",
+                          "Next": "IsItemDatasetFinished"
+                        },
+                        "ItemDatasetWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "ItemDataSetStatus"
+                        },
+                        "ItemDataSetStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateDatasetStatusLambdaArn}",
+                          "Next": "IsItemDatasetFinished"
+                        },
+                        "IsItemDatasetFinished": {
+                          "Type": "Choice",
+                          "Default": "ItemDatasetWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.DatasetStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "ItemDatasetFailed"
+                            },
+                            {
+                              "Variable": "$.DatasetStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "ItemDatasetImport"
+                            }
+                          ]
+                        },
+                        "ItemDatasetFailed": {
+                          "Type": "Fail",
+                          "Cause": "Item Dataset failed",
+                          "Error": "Item Dataset failed"
+                        },
+                         "ItemDatasetImport": {
+                          "Type": "Task",
+                          "Resource": "${DataSetImportLambdaArn}",
+                          "Next": "ItemImportWait"
+                        },
+                        "ItemImportWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "ItemImportStatus"
+                        },
+                        "ItemImportStatus": {
+                          "Type": "Task",
+                          "Resource": "${DataSetImportStatusLambdaArn}",
+                          "Next": "IsItemImportFinished"
+                        },
+                        "IsItemImportFinished": {
+                          "Type": "Choice",
+                          "Default": "ItemImportWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.ImportStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "ItemImportFailed"
+                            },
+                            {
+                              "Variable": "$.ImportStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "ItemDatasetEnd"
+                            }
+                          ]
+                        },
+                        "ItemImportFailed": {
+                          "Type": "Fail",
+                          "Cause": "Item Dataset Import failed",
+                          "Error": "Item Dataset Import failed"
+                        },
+                        "ItemDatasetEnd": {
+                          "Type": "Pass",
+                          "End": true
+                        }
+                      }
+                    }
+                  ]
+                },
+
+
+
+                "ParallelCampaigns": {
+                  "Type": "Parallel",
+                  "Next": "something",
+                  "Branches": [
+                    {
+                      "StartAt": "CreateUserSolution",
+                      "States": {
+                        "CreateUserSolution": {
+                          "Type": "Task",
+                          "Resource": "${CreateSolutionLambdaArn}",
+                          "Next": "IsUserSolutionFinished"
+                        },
+                        "UserSolutionWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "UserSolutionStatus"
+                        },
+                        "UserSolutionStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateSolutionStatusLambdaArn}",
+                          "Next": "IsUserSolutionFinished"
+                        },
+                        "IsUserSolutionFinished": {
+                          "Type": "Choice",
+                          "Default": "UserSolutionWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.SolutionStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "UserSolutionFailed"
+                            },
+                            {
+                              "Variable": "$.SolutionStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "UserSolutionCampaign"
+                            }
+                          ]
+                        },
+                        "UserSolutionFailed": {
+                          "Type": "Fail",
+                          "Cause": "User Solution failed",
+                          "Error": "User Solution failed"
+                        },
+                        "UserSolutionCampaign": {
+                          "Type": "Task",
+                          "Resource": "${CreateCampaignLambdaArn}",
+                          "Next": "UserCampaignWait"
+                        },
+                        "UserCampaignWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "UserCampaignStatus"
+                        },
+                        "UserCampaignStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateCampaignStatusLambdaArn}",
+                          "Next": "IsUserCampaignFinished"
+                        },
+                        "IsUserCampaignFinished": {
+                          "Type": "Choice",
+                          "Default": "UserCampaignWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.CampaignStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "UserCampaignFailed"
+                            },
+                            {
+                              "Variable": "$.CampaignStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "UserCampaignEnd"
+                            }
+                          ]
+                        },
+                        "UserCampaignFailed": {
+                          "Type": "Fail",
+                          "Cause": "User Campaign failed",
+                          "Error": "User Campaign failed"
+                        },
+                        "UserCampaignEnd": {
+                          "Type": "Pass",
+                          "End": true
+                        }
+                      }
+                    },
+                    {
+                      "StartAt": "CreateInteractionSolution",
+                      "States": {
+                        "CreateInteractionSolution": {
+                          "Type": "Task",
+                          "Resource": "${CreateSolutionLambdaArn}",
+                          "Next": "IsInteractionSolutionFinished"
+                        },
+                        "InteractionSolutionWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "InteractionSolutionStatus"
+                        },
+                        "InteractionSolutionStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateSolutionStatusLambdaArn}",
+                          "Next": "IsInteractionSolutionFinished"
+                        },
+                        "IsInteractionSolutionFinished": {
+                          "Type": "Choice",
+                          "Default": "InteractionSolutionWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.SolutionStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "InteractionSolutionFailed"
+                            },
+                            {
+                              "Variable": "$.SolutionStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "InteractionCampaign"
+                            }
+                          ]
+                        },
+                        "InteractionSolutionFailed": {
+                          "Type": "Fail",
+                          "Cause": "Interaction Solution failed",
+                          "Error": "Interaction Solution failed"
+                        },
+                        "InteractionCampaign": {
+                          "Type": "Task",
+                          "Resource": "${CreateCampaignLambdaArn}",
+                          "Next": "InteractionCampaignWait"
+                        },
+                        "InteractionCampaignWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "InteractionCampaignStatus"
+                        },
+                        "InteractionCampaignStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateCampaignStatusLambdaArn}",
+                          "Next": "IsInteractionCampaignFinished"
+                        },
+                        "IsInteractionCampaignFinished": {
+                          "Type": "Choice",
+                          "Default": "InteractionCampaignWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.CampaignStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "InteractionCampaignFailed"
+                            },
+                            {
+                              "Variable": "$.CampaignStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "InteractionCampaignEnd"
+                            }
+                          ]
+                        },
+                        "InteractionCampaignFailed": {
+                          "Type": "Fail",
+                          "Cause": "Interaction Campaign failed",
+                          "Error": "Interaction Campaign failed"
+                        },
+                        "InteractionCampaignEnd": {
+                          "Type": "Pass",
+                          "End": true
+                        }
+                      }
+                    },
+                    {
+                      "StartAt": "CreateItemSolution",
+                       "States": {
+                        "CreateItemSolution": {
+                          "Type": "Task",
+                          "Resource": "${CreateSolutionLambdaArn}",
+                          "Next": "IsItemSolutionFinished"
+                        },
+                        "ItemSolutionWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "ItemSolutionStatus"
+                        },
+                        "ItemSolutionStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateSolutionStatusLambdaArn}",
+                          "Next": "IsItemSolutionFinished"
+                        },
+                        "IsItemSolutionFinished": {
+                          "Type": "Choice",
+                          "Default": "ItemSolutionWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.SolutionStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "ItemSolutionFailed"
+                            },
+                            {
+                              "Variable": "$.SolutionStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "ItemSolutionCampaign"
+                            }
+                          ]
+                        },
+                        "ItemSolutionFailed": {
+                          "Type": "Fail",
+                          "Cause": "Item Solution failed",
+                          "Error": "Item Solution failed"
+                        },
+                         "ItemSolutionCampaign": {
+                          "Type": "Task",
+                          "Resource": "${CreateCampaignLambdaArn}",
+                          "Next": "ItemCampaignWait"
+                        },
+                        "ItemCampaignWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "ItemCampaignStatus"
+                        },
+                        "ItemCampaignStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateCampaignStatusLambdaArn}",
+                          "Next": "IsItemCampaignFinished"
+                        },
+                        "IsItemCampaignFinished": {
+                          "Type": "Choice",
+                          "Default": "ItemCampaignWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.CampaignStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "ItemCampaignFailed"
+                            },
+                            {
+                              "Variable": "$.CampaignStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "ItemCampaignEnd"
+                            }
+                          ]
+                        },
+                        "ItemCampaignFailed": {
+                          "Type": "Fail",
+                          "Cause": "Item Campaign failed",
+                          "Error": "Item Campaign failed"
+                        },
+                        "ItemCampaignEnd": {
+                          "Type": "Pass",
+                          "End": true
+                        }
+                      }
+                    }
+                  ]
+                },
+                "something": {
+                  "Type": "Pass",
+                  "End": true
+                }
+              }
+            }
+          - {CreateDatasetGroupLambdaArn: !GetAtt CreateDatasetGroupLambda.Arn, CreateDatasetGroupStatusLambdaArn: !GetAtt CreateDatasetGroupStatusLambda.Arn, CreateDatasetLambdaArn: !GetAtt CreateDatasetLambda.Arn, CreateDatasetStatusLambdaArn: !GetAtt CreateDatasetStatusLambda.Arn, DataSetImportLambdaArn: !GetAtt DataSetImportLambda.Arn, DataSetImportStatusLambdaArn: !GetAtt DataSetImportStatusLambda.Arn, CreateSolutionLambdaArn: !GetAtt CreateSolutionLambda.Arn, CreateSolutionStatusLambdaArn: !GetAtt CreateSolutionStatusLambda.Arn, CreateCampaignLambda: !GetAtt CreateCampaignLambda.Arn}
+
+
+  PersonalizeCampaignStateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "states.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action: "lambda:InvokeFunction"
+                Resource:
+                  - !GetAtt CreateDatasetGroupLambda.Arn
+                  - !GetAtt CreateDatasetGroupStatusLambda.Arn
+                  - !GetAtt CreateDatasetLambda.Arn
+                  - !GetAtt CreateDatasetStatusLambda.Arn
+                  - !GetAtt DataSetImportLambda.Arn
+                  - !GetAtt DataSetImportStatusLambda.Arn
+                  - !GetAtt CreateSolutionLambda.Arn
+                  - !GetAtt CreateSolutionStatusLambda.Arn
+                  - !GetAtt CreateCampaignLambda.Arn
+                  - !GetAtt CreateCampaignStatusLambda.Arn
+
+
+
+  CreateDatasetGroupLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  CreateDatasetGroupStatusLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  CreateDatasetLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  CreateDatasetStatusLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  DataSetImportLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  DataSetImportStatusLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  CreateSolutionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  CreateSolutionStatusLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  CreateCampaignLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+
+  CreateCampaignStatusLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
