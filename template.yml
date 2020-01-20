@@ -138,7 +138,7 @@ Resources:
       Timeout: 60
       Environment:
         Variables:
-          SOMETHING: ELSE
+          SOURCE_FILE_BASE_URL: "https://raw.githubusercontent.com/Ryanjlowe/Personalize-car-campaign/master/schemas"
       Code:
         ZipFile: |
           import boto3
@@ -147,9 +147,12 @@ Resources:
 
           def lambda_handler(event, context):
 
+            json_url = urlopen(`${process.env.SOURCE_FILE_BASE_URL}/${event['SchemaJSON']}.json`)
+            json = json.loads(json_url.read())
+
             schema_response = personalize.create_schema(
               name = event['SchemaName'],
-              schema = event['SchemaJSON']
+              schema = json
             )
 
             create_response = personalize.create_dataset(
@@ -202,6 +205,7 @@ Resources:
       Environment:
         Variables:
           IMPORT_ROLE: !GetAtt PersonalizeDatasetImportRole.Arn
+          S3_BUCKET: !Ref DataS3Bucket
       Code:
         ZipFile: |
           import boto3
@@ -211,10 +215,10 @@ Resources:
           def lambda_handler(event, context):
 
             response = personalize.create_dataset_import_job(
-              jobName = '', TODO
+              jobName = `${event['ImportCSVFile']}-importjob-${event['DatasetGroupArn']}`,
               datasetArn = event['DatasetGroupArn'],
               dataSource = {
-                'dataLocation': '' TODO
+                'dataLocation': `s3://${process.env.SOLUTION_BUCKET}/${event['ImportCSVFile']}.csv`
               },
               roleArn: os.environ.get('IMPORT_ROLE')
             )
@@ -503,7 +507,7 @@ Resources:
                         "CreateUserDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
-                          "Parameters": {"SchemaName": "car-users-schema", "SchemaJSON": "TODO", "", "DatasetName": "car-users", "DatasetType": "USERS"},
+                          "Parameters": {"SchemaName": "car-users-schema", "SchemaJSON": "users", "", "DatasetName": "car-users", "DatasetType": "USERS"},
                           "Next": "IsUserDatasetFinished"
                         },
                         "UserDatasetWait": {
@@ -540,6 +544,7 @@ Resources:
                         "UserDatasetImport": {
                           "Type": "Task",
                           "Resource": "${DataSetImportLambdaArn}",
+                          "Parameters": {"ImportCSVFile": "users"},
                           "Next": "UserImportWait"
                         },
                         "UserImportWait": {
@@ -585,7 +590,7 @@ Resources:
                         "CreateInteractionDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
-                          "Parameters": {"SchemaName": "car-interactions-schema", "SchemaJSON": "TODO", "DatasetName": "car-interactions", "DatasetType": "INTERACTIONS"},
+                          "Parameters": {"SchemaName": "car-interactions-schema", "SchemaJSON": "interactions", "DatasetName": "car-interactions", "DatasetType": "INTERACTIONS"},
                           "Next": "IsInteractionDatasetFinished"
                         },
                         "InteractionDatasetWait": {
@@ -622,6 +627,7 @@ Resources:
                         "InteractionDatasetImport": {
                           "Type": "Task",
                           "Resource": "${DataSetImportLambdaArn}",
+                          "Parameters": {"ImportCSVFile": "interactions"},
                           "Next": "InteractionImportWait"
                         },
                         "InteractionImportWait": {
@@ -667,7 +673,7 @@ Resources:
                         "CreateItemDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
-                          "Parameters": {"SchemaName": "car-items-schema", "SchemaJSON": "TODO", "DatasetName": "car-items", "DatasetType": "ITEMS"},
+                          "Parameters": {"SchemaName": "car-items-schema", "SchemaJSON": "car_items", "DatasetName": "car-items", "DatasetType": "ITEMS"},
                           "Next": "IsItemDatasetFinished"
                         },
                         "ItemDatasetWait": {
@@ -704,6 +710,7 @@ Resources:
                          "ItemDatasetImport": {
                           "Type": "Task",
                           "Resource": "${DataSetImportLambdaArn}",
+                          "Parameters": {"ImportCSVFile": "car_items"},
                           "Next": "ItemImportWait"
                         },
                         "ItemImportWait": {
