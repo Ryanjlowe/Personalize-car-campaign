@@ -1,5 +1,6 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: Build Step Functions to deploy a Personalize Campaign
+# Optimize Amazon Personalize Campaigns using Amazon Pinpoint Events
 
 Parameters:
   Test:
@@ -8,6 +9,71 @@ Parameters:
 
 
 Resources:
+
+  Resources:
+    DataS3Bucket:
+      Type: AWS::S3::Bucket
+      DeletionPolicy: Retain
+      Metadata:
+        cfn_nag:
+          rules_to_suppress:
+            - id: W51
+              reason: Not public facing.
+      Properties:
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: True
+          BlockPublicPolicy: True
+          IgnorePublicAcls: True
+          RestrictPublicBuckets: True
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        LoggingConfiguration:
+          DestinationBucketName: !Ref LogBucket
+          LogFilePrefix: personalize-car-campaign/
+
+  LogBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W35
+            reason: This is the log bucket.
+    Properties:
+      AccessControl: LogDeliveryWrite
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  LogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LogBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+        - Sid: AWSCloudTrailAclCheck
+          Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action: "s3:GetBucketAcl"
+          Resource: !Sub arn:aws:s3:::${LogBucket}
+        - Sid: AWSCloudTrailWrite
+          Effect: Allow
+          Principal:
+            Service: cloudtrail.amazonaws.com
+          Action: "s3:PutObject"
+          Resource: !Sub arn:aws:s3:::${LogBucket}/AWSLogs/${AWS::AccountId}/*
+          Condition:
+            StringEquals:
+              "s3:x-amz-acl": "bucket-owner-full-control"
 
   CreateDatasetGroupLambda:
     Type: AWS::Lambda::Function
@@ -18,11 +84,21 @@ Resources:
       Timeout: 60
       Environment:
         Variables:
-          SOMETHING: ELSE
+          DATASET_GROUP_NAME: "car-dg"
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+            response = personalize.create_dataset_group(
+              name = os.environ.get('DATASET_GROUP_NAME')
+            )
+
+            return {
+              'DatasetGroupArn': response['datasetGroupArn']
+            }
 
   CreateDatasetGroupStatusLambda:
     Type: AWS::Lambda::Function
@@ -36,8 +112,22 @@ Resources:
           SOMETHING: ELSE
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+
+            dataset_group_arn = event['DatasetGroupArn']
+
+            response = personalize.describe_dataset_group(
+              datasetGroupArn = dataset_group_arn
+            )
+
+            return {
+              'DatasetGroupArn': dataset_group_arn,
+              'DatasetGroupStatus': response['datasetGroup']['status']
+            }
 
   CreateDatasetLambda:
     Type: AWS::Lambda::Function
@@ -51,8 +141,28 @@ Resources:
           SOMETHING: ELSE
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+
+            schema_response = personalize.create_schema(
+              name = event['SchemaName'],
+              schema = event['SchemaJSON']
+            )
+
+            create_response = personalize.create_dataset(
+              name = event['DatasetName'],
+              datasetType: event['DatasetType'],
+              datasetGroupArn: event['DatasetGroupArn'],
+              schemaArn = schema_response['schemaArn']
+            )
+
+            return {
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': create_response['datasetArn']
+            }
 
   CreateDatasetStatusLambda:
     Type: AWS::Lambda::Function
@@ -66,8 +176,21 @@ Resources:
           SOMETHING: ELSE
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+
+            response = personalize.describe_dataset(
+              datasetArn = event['DatasetArn']
+            )
+
+            return {
+              'DatasetStatus': response['dataset']['status'],
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': event['DatasetArn']
+            }
 
   DataSetImportLambda:
     Type: AWS::Lambda::Function
@@ -78,11 +201,30 @@ Resources:
       Timeout: 60
       Environment:
         Variables:
-          SOMETHING: ELSE
+          IMPORT_ROLE: !GetAtt PersonalizeDatasetImportRole.Arn
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+
+            response = personalize.create_dataset_import_job(
+              jobName = '', TODO
+              datasetArn = event['DatasetGroupArn'],
+              dataSource = {
+                'dataLocation': '' TODO
+              },
+              roleArn: os.environ.get('IMPORT_ROLE')
+            )
+
+
+            return {
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': event['DatasetArn'],
+              'DatasetImportJobArn': response['datasetImportJobArn']
+            }
 
   DataSetImportStatusLambda:
     Type: AWS::Lambda::Function
@@ -96,8 +238,22 @@ Resources:
           SOMETHING: ELSE
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+
+            response = personalize.describe_dataset_import_job(
+              datasetImportJobArn = event['DatasetImportJobArn']
+            )
+
+            return {
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': event['DatasetArn'],
+              'DatasetImportJobArn': event['DatasetImportJobArn'],
+              'DatasetImportJobStatus': response['datasetImportJob']['status']
+            }
 
   CreateSolutionLambda:
     Type: AWS::Lambda::Function
@@ -108,11 +264,27 @@ Resources:
       Timeout: 60
       Environment:
         Variables:
-          SOMETHING: ELSE
+          SOLUTION_NAME: "car-hrnn"
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+
+            response = personalize.create_solution(
+              name = os.environ.get('SOLUTION_NAME'),
+              datasetGroupArn = event['DatasetGroupArn'],
+              recipeArn = 'arn:aws:personalize:::recipe/aws-hrnn'
+            )
+
+            return {
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': event['DatasetArn'],
+              'DatasetImportJobArn': event['DatasetImportJobArn'],
+              'SolutionArn': response['solutionArn']
+            }
 
   CreateSolutionStatusLambda:
     Type: AWS::Lambda::Function
@@ -126,8 +298,86 @@ Resources:
           SOMETHING: ELSE
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+
+            response = personalize.describe_solution(
+              solutionArn = event['SolutionArn']
+            )
+
+            return {
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': event['DatasetArn'],
+              'DatasetImportJobArn': event['DatasetImportJobArn'],
+              'SolutionArn': event['SolutionArn'],
+              'SolutionStatus': event['solution']['status']
+            }
+
+  CreateSolutionVersionLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateSolutionVersionLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
+          def lambda_handler(event, context):
+
+            response = personalize.create_solution_version(
+              solutionArn = event['SolutionArn']
+            )
+
+            return {
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': event['DatasetArn'],
+              'DatasetImportJobArn': event['DatasetImportJobArn'],
+              'SolutionArn': event['SolutionArn'],
+              'SolutionVersionArn': response['solutionVersionArn']
+            }
+
+  CreateSolutionVersionStatusLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Role: !GetAtt CreateSolutionVersionStatusLambdaRole.Arn
+      Runtime: "python3.8"
+      Timeout: 60
+      Environment:
+        Variables:
+          SOMETHING: ELSE
+      Code:
+        ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
+          def lambda_handler(event, context):
+
+            response = personalize.describe_solution_version(
+              solutionVersionArn = event['SolutionVersionArn']
+            )
+
+            return {
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': event['DatasetArn'],
+              'DatasetImportJobArn': event['DatasetImportJobArn'],
+              'SolutionArn': event['SolutionArn'],
+              'SolutionVersionArn': event['SolutionVersionArn'],
+              'SolutionVersionStatus': response['solutionVersion']['status']
+            }
+
+
 
   CreateCampaignLambda:
     Type: AWS::Lambda::Function
@@ -138,11 +388,30 @@ Resources:
       Timeout: 60
       Environment:
         Variables:
-          SOMETHING: ELSE
+          MIN_PROVISIONED_TPS: 1
+          CAMPAIGN_NAME: "car-hrnn"
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+
+            response = personalize.create_campaign(
+              name = os.environ.get('CAMPAIGN_NAME'),
+              solutionVersionArn = event['SolutionVersionArn'],
+              minProvisionedTPS = os.environ.get('MIN_PROVISIONED_TPS')
+            )
+
+            return {
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': event['DatasetArn'],
+              'DatasetImportJobArn': event['DatasetImportJobArn'],
+              'SolutionArn': event['SolutionArn'],
+              'SolutionVersionArn': event['SolutionVersionArn'],
+              'CampaignArn': response['campaignArn']
+            }
 
   CreateCampaignStatusLambda:
     Type: AWS::Lambda::Function
@@ -156,8 +425,25 @@ Resources:
           SOMETHING: ELSE
       Code:
         ZipFile: |
+          import boto3
+
+          personalize = boto3.client('personalize')
+
           def lambda_handler(event, context):
-            return {"Done": true}
+
+            response = personalize.describe_campaign(
+              campaignArn = event['CampaignArn']
+            )
+
+            return {
+              'DatasetGroupArn': event['DatasetGroupArn'],
+              'DatasetArn': event['DatasetArn'],
+              'DatasetImportJobArn': event['DatasetImportJobArn'],
+              'SolutionArn': event['SolutionArn'],
+              'SolutionVersionArn': event['SolutionVersionArn'],
+              'CampaignArn': event['CampaignArn']
+              'CampaignStatus': response['campaign']['status']
+            }
 
 
   PersonalizeCampaignStateMachine:
@@ -192,12 +478,12 @@ Resources:
                   "Choices": [
                     {
                       "Variable": "$.DatasetGroupStatus",
-                      "StringEquals": "FAILED",
+                      "StringEquals": "CREATE FAILED",
                       "Next": "DatasetGroupFailed"
                     },
                     {
                       "Variable": "$.DatasetGroupStatus",
-                      "StringEquals": "COMPLETED",
+                      "StringEquals": "ACTIVE",
                       "Next": "ParallelDatasets"
                     }
                   ]
@@ -217,6 +503,7 @@ Resources:
                         "CreateUserDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
+                          "Parameters": {"SchemaName": "car-users-schema", "SchemaJSON": "TODO", "", "DatasetName": "car-users", "DatasetType": "USERS"},
                           "Next": "IsUserDatasetFinished"
                         },
                         "UserDatasetWait": {
@@ -235,12 +522,12 @@ Resources:
                           "Choices": [
                             {
                               "Variable": "$.DatasetStatus",
-                              "StringEquals": "FAILED",
+                              "StringEquals": "CREATE FAILED",
                               "Next": "UserDatasetFailed"
                             },
                             {
                               "Variable": "$.DatasetStatus",
-                              "StringEquals": "COMPLETED",
+                              "StringEquals": "ACTIVE",
                               "Next": "UserDatasetImport"
                             }
                           ]
@@ -270,13 +557,13 @@ Resources:
                           "Default": "UserImportWait",
                           "Choices": [
                             {
-                              "Variable": "$.ImportStatus",
-                              "StringEquals": "FAILED",
+                              "Variable": "$.DatasetImportJobStatus",
+                              "StringEquals": "CREATE FAILED",
                               "Next": "UserImportFailed"
                             },
                             {
-                              "Variable": "$.ImportStatus",
-                              "StringEquals": "COMPLETED",
+                              "Variable": "$.DatasetImportJobStatus",
+                              "StringEquals": "ACTIVE",
                               "Next": "UserDatasetEnd"
                             }
                           ]
@@ -298,6 +585,7 @@ Resources:
                         "CreateInteractionDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
+                          "Parameters": {"SchemaName": "car-interactions-schema", "SchemaJSON": "TODO", "DatasetName": "car-interactions", "DatasetType": "INTERACTIONS"},
                           "Next": "IsInteractionDatasetFinished"
                         },
                         "InteractionDatasetWait": {
@@ -316,12 +604,12 @@ Resources:
                           "Choices": [
                             {
                               "Variable": "$.DatasetStatus",
-                              "StringEquals": "FAILED",
+                              "StringEquals": "CREATE FAILED",
                               "Next": "InteractionDatasetFailed"
                             },
                             {
                               "Variable": "$.DatasetStatus",
-                              "StringEquals": "COMPLETED",
+                              "StringEquals": "ACTIVE",
                               "Next": "InteractionDatasetImport"
                             }
                           ]
@@ -351,13 +639,13 @@ Resources:
                           "Default": "InteractionImportWait",
                           "Choices": [
                             {
-                              "Variable": "$.ImportStatus",
-                              "StringEquals": "FAILED",
+                              "Variable": "$.DatasetImportJobStatus",
+                              "StringEquals": "CREATE FAILED",
                               "Next": "InteractionImportFailed"
                             },
                             {
-                              "Variable": "$.ImportStatus",
-                              "StringEquals": "COMPLETED",
+                              "Variable": "$.DatasetImportJobStatus",
+                              "StringEquals": "ACTIVE",
                               "Next": "InteractionDatasetEnd"
                             }
                           ]
@@ -379,6 +667,7 @@ Resources:
                         "CreateItemDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
+                          "Parameters": {"SchemaName": "car-items-schema", "SchemaJSON": "TODO", "DatasetName": "car-items", "DatasetType": "ITEMS"},
                           "Next": "IsItemDatasetFinished"
                         },
                         "ItemDatasetWait": {
@@ -397,12 +686,12 @@ Resources:
                           "Choices": [
                             {
                               "Variable": "$.DatasetStatus",
-                              "StringEquals": "FAILED",
+                              "StringEquals": "CREATE FAILED",
                               "Next": "ItemDatasetFailed"
                             },
                             {
                               "Variable": "$.DatasetStatus",
-                              "StringEquals": "COMPLETED",
+                              "StringEquals": "ACTIVE",
                               "Next": "ItemDatasetImport"
                             }
                           ]
@@ -432,13 +721,13 @@ Resources:
                           "Default": "ItemImportWait",
                           "Choices": [
                             {
-                              "Variable": "$.ImportStatus",
-                              "StringEquals": "FAILED",
+                              "Variable": "$.DatasetImportJobStatus",
+                              "StringEquals": "CREATE FAILED",
                               "Next": "ItemImportFailed"
                             },
                             {
-                              "Variable": "$.ImportStatus",
-                              "StringEquals": "COMPLETED",
+                              "Variable": "$.DatasetImportJobStatus",
+                              "StringEquals": "ACTIVE",
                               "Next": "ItemDatasetEnd"
                             }
                           ]
@@ -502,6 +791,49 @@ Resources:
                           "Cause": "User Solution failed",
                           "Error": "User Solution failed"
                         },
+
+
+
+                        "CreateUserSolutionVersion": {
+                          "Type": "Task",
+                          "Resource": "${CreateSolutionVersionLambdaArn}",
+                          "Next": "IsUserSolutionVersionFinished"
+                        },
+                        "UserSolutionVersionWait": {
+                          "Type": "Wait",
+                          "Seconds": 30,
+                          "Next": "UserSolutionVersionStatus"
+                        },
+                        "UserSolutionVersionStatus": {
+                          "Type": "Task",
+                          "Resource": "${CreateSolutionVersionStatusLambdaArn}",
+                          "Next": "IsUserSolutionFinished"
+                        },
+                        "IsUserSolutionVersionFinished": {
+                          "Type": "Choice",
+                          "Default": "UserSolutionVersionWait",
+                          "Choices": [
+                            {
+                              "Variable": "$.SolutionVersionStatus",
+                              "StringEquals": "FAILED",
+                              "Next": "UserSolutionVersionFailed"
+                            },
+                            {
+                              "Variable": "$.SolutionVersionStatus",
+                              "StringEquals": "COMPLETED",
+                              "Next": "UserSolutionCampaign"
+                            }
+                          ]
+                        },
+                        "UserSolutionVersionFailed": {
+                          "Type": "Fail",
+                          "Cause": "User Solution failed",
+                          "Error": "User Solution failed"
+                        },
+
+
+
+
                         "UserSolutionCampaign": {
                           "Type": "Task",
                           "Resource": "${CreateCampaignLambdaArn}",
@@ -543,169 +875,170 @@ Resources:
                           "End": true
                         }
                       }
-                    },
-                    {
-                      "StartAt": "CreateInteractionSolution",
-                      "States": {
-                        "CreateInteractionSolution": {
-                          "Type": "Task",
-                          "Resource": "${CreateSolutionLambdaArn}",
-                          "Next": "IsInteractionSolutionFinished"
-                        },
-                        "InteractionSolutionWait": {
-                          "Type": "Wait",
-                          "Seconds": 30,
-                          "Next": "InteractionSolutionStatus"
-                        },
-                        "InteractionSolutionStatus": {
-                          "Type": "Task",
-                          "Resource": "${CreateSolutionStatusLambdaArn}",
-                          "Next": "IsInteractionSolutionFinished"
-                        },
-                        "IsInteractionSolutionFinished": {
-                          "Type": "Choice",
-                          "Default": "InteractionSolutionWait",
-                          "Choices": [
-                            {
-                              "Variable": "$.SolutionStatus",
-                              "StringEquals": "FAILED",
-                              "Next": "InteractionSolutionFailed"
-                            },
-                            {
-                              "Variable": "$.SolutionStatus",
-                              "StringEquals": "COMPLETED",
-                              "Next": "InteractionCampaign"
-                            }
-                          ]
-                        },
-                        "InteractionSolutionFailed": {
-                          "Type": "Fail",
-                          "Cause": "Interaction Solution failed",
-                          "Error": "Interaction Solution failed"
-                        },
-                        "InteractionCampaign": {
-                          "Type": "Task",
-                          "Resource": "${CreateCampaignLambdaArn}",
-                          "Next": "InteractionCampaignWait"
-                        },
-                        "InteractionCampaignWait": {
-                          "Type": "Wait",
-                          "Seconds": 30,
-                          "Next": "InteractionCampaignStatus"
-                        },
-                        "InteractionCampaignStatus": {
-                          "Type": "Task",
-                          "Resource": "${CreateCampaignStatusLambdaArn}",
-                          "Next": "IsInteractionCampaignFinished"
-                        },
-                        "IsInteractionCampaignFinished": {
-                          "Type": "Choice",
-                          "Default": "InteractionCampaignWait",
-                          "Choices": [
-                            {
-                              "Variable": "$.CampaignStatus",
-                              "StringEquals": "FAILED",
-                              "Next": "InteractionCampaignFailed"
-                            },
-                            {
-                              "Variable": "$.CampaignStatus",
-                              "StringEquals": "COMPLETED",
-                              "Next": "InteractionCampaignEnd"
-                            }
-                          ]
-                        },
-                        "InteractionCampaignFailed": {
-                          "Type": "Fail",
-                          "Cause": "Interaction Campaign failed",
-                          "Error": "Interaction Campaign failed"
-                        },
-                        "InteractionCampaignEnd": {
-                          "Type": "Pass",
-                          "End": true
-                        }
-                      }
-                    },
-                    {
-                      "StartAt": "CreateItemSolution",
-                       "States": {
-                        "CreateItemSolution": {
-                          "Type": "Task",
-                          "Resource": "${CreateSolutionLambdaArn}",
-                          "Next": "IsItemSolutionFinished"
-                        },
-                        "ItemSolutionWait": {
-                          "Type": "Wait",
-                          "Seconds": 30,
-                          "Next": "ItemSolutionStatus"
-                        },
-                        "ItemSolutionStatus": {
-                          "Type": "Task",
-                          "Resource": "${CreateSolutionStatusLambdaArn}",
-                          "Next": "IsItemSolutionFinished"
-                        },
-                        "IsItemSolutionFinished": {
-                          "Type": "Choice",
-                          "Default": "ItemSolutionWait",
-                          "Choices": [
-                            {
-                              "Variable": "$.SolutionStatus",
-                              "StringEquals": "FAILED",
-                              "Next": "ItemSolutionFailed"
-                            },
-                            {
-                              "Variable": "$.SolutionStatus",
-                              "StringEquals": "COMPLETED",
-                              "Next": "ItemSolutionCampaign"
-                            }
-                          ]
-                        },
-                        "ItemSolutionFailed": {
-                          "Type": "Fail",
-                          "Cause": "Item Solution failed",
-                          "Error": "Item Solution failed"
-                        },
-                         "ItemSolutionCampaign": {
-                          "Type": "Task",
-                          "Resource": "${CreateCampaignLambdaArn}",
-                          "Next": "ItemCampaignWait"
-                        },
-                        "ItemCampaignWait": {
-                          "Type": "Wait",
-                          "Seconds": 30,
-                          "Next": "ItemCampaignStatus"
-                        },
-                        "ItemCampaignStatus": {
-                          "Type": "Task",
-                          "Resource": "${CreateCampaignStatusLambdaArn}",
-                          "Next": "IsItemCampaignFinished"
-                        },
-                        "IsItemCampaignFinished": {
-                          "Type": "Choice",
-                          "Default": "ItemCampaignWait",
-                          "Choices": [
-                            {
-                              "Variable": "$.CampaignStatus",
-                              "StringEquals": "FAILED",
-                              "Next": "ItemCampaignFailed"
-                            },
-                            {
-                              "Variable": "$.CampaignStatus",
-                              "StringEquals": "COMPLETED",
-                              "Next": "ItemCampaignEnd"
-                            }
-                          ]
-                        },
-                        "ItemCampaignFailed": {
-                          "Type": "Fail",
-                          "Cause": "Item Campaign failed",
-                          "Error": "Item Campaign failed"
-                        },
-                        "ItemCampaignEnd": {
-                          "Type": "Pass",
-                          "End": true
-                        }
-                      }
                     }
+                    # ,
+                    # {
+                    #   "StartAt": "CreateInteractionSolution",
+                    #   "States": {
+                    #     "CreateInteractionSolution": {
+                    #       "Type": "Task",
+                    #       "Resource": "${CreateSolutionLambdaArn}",
+                    #       "Next": "IsInteractionSolutionFinished"
+                    #     },
+                    #     "InteractionSolutionWait": {
+                    #       "Type": "Wait",
+                    #       "Seconds": 30,
+                    #       "Next": "InteractionSolutionStatus"
+                    #     },
+                    #     "InteractionSolutionStatus": {
+                    #       "Type": "Task",
+                    #       "Resource": "${CreateSolutionStatusLambdaArn}",
+                    #       "Next": "IsInteractionSolutionFinished"
+                    #     },
+                    #     "IsInteractionSolutionFinished": {
+                    #       "Type": "Choice",
+                    #       "Default": "InteractionSolutionWait",
+                    #       "Choices": [
+                    #         {
+                    #           "Variable": "$.SolutionStatus",
+                    #           "StringEquals": "FAILED",
+                    #           "Next": "InteractionSolutionFailed"
+                    #         },
+                    #         {
+                    #           "Variable": "$.SolutionStatus",
+                    #           "StringEquals": "COMPLETED",
+                    #           "Next": "InteractionCampaign"
+                    #         }
+                    #       ]
+                    #     },
+                    #     "InteractionSolutionFailed": {
+                    #       "Type": "Fail",
+                    #       "Cause": "Interaction Solution failed",
+                    #       "Error": "Interaction Solution failed"
+                    #     },
+                    #     "InteractionCampaign": {
+                    #       "Type": "Task",
+                    #       "Resource": "${CreateCampaignLambdaArn}",
+                    #       "Next": "InteractionCampaignWait"
+                    #     },
+                    #     "InteractionCampaignWait": {
+                    #       "Type": "Wait",
+                    #       "Seconds": 30,
+                    #       "Next": "InteractionCampaignStatus"
+                    #     },
+                    #     "InteractionCampaignStatus": {
+                    #       "Type": "Task",
+                    #       "Resource": "${CreateCampaignStatusLambdaArn}",
+                    #       "Next": "IsInteractionCampaignFinished"
+                    #     },
+                    #     "IsInteractionCampaignFinished": {
+                    #       "Type": "Choice",
+                    #       "Default": "InteractionCampaignWait",
+                    #       "Choices": [
+                    #         {
+                    #           "Variable": "$.CampaignStatus",
+                    #           "StringEquals": "FAILED",
+                    #           "Next": "InteractionCampaignFailed"
+                    #         },
+                    #         {
+                    #           "Variable": "$.CampaignStatus",
+                    #           "StringEquals": "COMPLETED",
+                    #           "Next": "InteractionCampaignEnd"
+                    #         }
+                    #       ]
+                    #     },
+                    #     "InteractionCampaignFailed": {
+                    #       "Type": "Fail",
+                    #       "Cause": "Interaction Campaign failed",
+                    #       "Error": "Interaction Campaign failed"
+                    #     },
+                    #     "InteractionCampaignEnd": {
+                    #       "Type": "Pass",
+                    #       "End": true
+                    #     }
+                    #   }
+                    # },
+                    # {
+                    #   "StartAt": "CreateItemSolution",
+                    #    "States": {
+                    #     "CreateItemSolution": {
+                    #       "Type": "Task",
+                    #       "Resource": "${CreateSolutionLambdaArn}",
+                    #       "Next": "IsItemSolutionFinished"
+                    #     },
+                    #     "ItemSolutionWait": {
+                    #       "Type": "Wait",
+                    #       "Seconds": 30,
+                    #       "Next": "ItemSolutionStatus"
+                    #     },
+                    #     "ItemSolutionStatus": {
+                    #       "Type": "Task",
+                    #       "Resource": "${CreateSolutionStatusLambdaArn}",
+                    #       "Next": "IsItemSolutionFinished"
+                    #     },
+                    #     "IsItemSolutionFinished": {
+                    #       "Type": "Choice",
+                    #       "Default": "ItemSolutionWait",
+                    #       "Choices": [
+                    #         {
+                    #           "Variable": "$.SolutionStatus",
+                    #           "StringEquals": "FAILED",
+                    #           "Next": "ItemSolutionFailed"
+                    #         },
+                    #         {
+                    #           "Variable": "$.SolutionStatus",
+                    #           "StringEquals": "COMPLETED",
+                    #           "Next": "ItemSolutionCampaign"
+                    #         }
+                    #       ]
+                    #     },
+                    #     "ItemSolutionFailed": {
+                    #       "Type": "Fail",
+                    #       "Cause": "Item Solution failed",
+                    #       "Error": "Item Solution failed"
+                    #     },
+                    #      "ItemSolutionCampaign": {
+                    #       "Type": "Task",
+                    #       "Resource": "${CreateCampaignLambdaArn}",
+                    #       "Next": "ItemCampaignWait"
+                    #     },
+                    #     "ItemCampaignWait": {
+                    #       "Type": "Wait",
+                    #       "Seconds": 30,
+                    #       "Next": "ItemCampaignStatus"
+                    #     },
+                    #     "ItemCampaignStatus": {
+                    #       "Type": "Task",
+                    #       "Resource": "${CreateCampaignStatusLambdaArn}",
+                    #       "Next": "IsItemCampaignFinished"
+                    #     },
+                    #     "IsItemCampaignFinished": {
+                    #       "Type": "Choice",
+                    #       "Default": "ItemCampaignWait",
+                    #       "Choices": [
+                    #         {
+                    #           "Variable": "$.CampaignStatus",
+                    #           "StringEquals": "FAILED",
+                    #           "Next": "ItemCampaignFailed"
+                    #         },
+                    #         {
+                    #           "Variable": "$.CampaignStatus",
+                    #           "StringEquals": "COMPLETED",
+                    #           "Next": "ItemCampaignEnd"
+                    #         }
+                    #       ]
+                    #     },
+                    #     "ItemCampaignFailed": {
+                    #       "Type": "Fail",
+                    #       "Cause": "Item Campaign failed",
+                    #       "Error": "Item Campaign failed"
+                    #     },
+                    #     "ItemCampaignEnd": {
+                    #       "Type": "Pass",
+                    #       "End": true
+                    #     }
+                    #  }
+                    # }
                   ]
                 },
                 "something": {
@@ -714,7 +1047,7 @@ Resources:
                 }
               }
             }
-          - {CreateDatasetGroupLambdaArn: !GetAtt CreateDatasetGroupLambda.Arn, CreateDatasetGroupStatusLambdaArn: !GetAtt CreateDatasetGroupStatusLambda.Arn, CreateDatasetLambdaArn: !GetAtt CreateDatasetLambda.Arn, CreateDatasetStatusLambdaArn: !GetAtt CreateDatasetStatusLambda.Arn, DataSetImportLambdaArn: !GetAtt DataSetImportLambda.Arn, DataSetImportStatusLambdaArn: !GetAtt DataSetImportStatusLambda.Arn, CreateSolutionLambdaArn: !GetAtt CreateSolutionLambda.Arn, CreateSolutionStatusLambdaArn: !GetAtt CreateSolutionStatusLambda.Arn, CreateCampaignLambda: !GetAtt CreateCampaignLambda.Arn}
+          - {CreateDatasetGroupLambdaArn: !GetAtt CreateDatasetGroupLambda.Arn, CreateDatasetGroupStatusLambdaArn: !GetAtt CreateDatase tGroupStatusLambda.Arn, CreateDatasetLambdaArn: !GetAtt CreateDatasetLambda.Arn, CreateDatasetStatusLambdaArn: !GetAtt CreateDatasetStatusLambda.Arn, DataSetImportLambdaArn: !GetAtt DataSetImportLambda.Arn, DataSetImportStatusLambdaArn: !GetAtt DataSetImportStatusLambda.Arn, CreateSolutionLambdaArn: !GetAtt CreateSolutionLambda.Arn, CreateSolutionStatusLambdaArn: !GetAtt CreateSolutionStatusLambda.Arn, CreateCampaignLambda: !GetAtt CreateCampaignLambda.Arn, CreateSolutionVersionLambdaArn: !GetAtt CreateSolutionVersionLambda.Arn, CreateSolutionVersionStatusLambdaArn: !GetAtt CreateSolutionVersionStatusLambda.Arn}
 
 
   PersonalizeCampaignStateMachineRole:
@@ -782,6 +1115,12 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:CreateDatasetGroup"
+                Arn:
+                  - "*"
 
   CreateDatasetGroupStatusLambdaRole:
     Type: AWS::IAM::Role
@@ -809,6 +1148,11 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:DescribeDatasetGroup"
+                Arn: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset-group/*"
 
   CreateDatasetLambdaRole:
     Type: AWS::IAM::Role
@@ -836,6 +1180,13 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:CreateDataset"
+                Arn:
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset-group/*"
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:schema/*"
 
   CreateDatasetStatusLambdaRole:
     Type: AWS::IAM::Role
@@ -863,6 +1214,11 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:DescribeDataset"
+                Arn: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset/*"
 
   DataSetImportLambdaRole:
     Type: AWS::IAM::Role
@@ -890,6 +1246,16 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:CreateDatasetImportJob"
+                Arn: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset/*"
+              -
+                Effect: "Allow"
+                Action: "iam:PassRole"
+                Resource:
+                  - !GetAtt PersonalizeDatasetImportRole.Arn
 
   DataSetImportStatusLambdaRole:
     Type: AWS::IAM::Role
@@ -917,6 +1283,11 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:DescribeDatasetImportJob"
+                Arn: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset-import-job/*"
 
   CreateSolutionLambdaRole:
     Type: AWS::IAM::Role
@@ -944,6 +1315,13 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:CreateSolution"
+                Arn:
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset-group/*"
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:recipe/*"
 
   CreateSolutionStatusLambdaRole:
     Type: AWS::IAM::Role
@@ -971,6 +1349,75 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:DescribeSolution"
+                Arn: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution/*"
+
+  CreateSolutionVersionLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:CreateSolutionVersion"
+                Arn: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution/*"
+
+  CreateSolutionVersionStatusLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:DescribeSolutionVersion"
+                Arn: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution-version/*"
 
   CreateCampaignLambdaRole:
     Type: AWS::IAM::Role
@@ -998,6 +1445,11 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:CreateCampaign"
+                Arn: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution-version/*"
 
   CreateCampaignStatusLambdaRole:
     Type: AWS::IAM::Role
@@ -1025,3 +1477,222 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "personalize:DescribeCampaign"
+                Arn: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:campaign/*"
+
+  PersonalizeDatasetImportRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - personalize.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        -
+          PolicyName: "root"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${DataS3Bucket}"
+                  - !Sub "arn:aws:s3:::${DataS3Bucket}/*"
+
+#####
+
+  SetupSampleFiles:
+    Type: Custom::LoadLambda
+    Properties:
+      ServiceToken: !GetAtt CustomResourceHelper.Arn
+      CustomResourceAction: SetupSampleFiles
+
+  CustomResourceHelper:
+    Type: AWS::Lambda::Function
+    DependsOn: Crawler
+    Properties:
+      Environment:
+        Variables:
+          SOURCE_FILE_BASE_URL: "https://raw.githubusercontent.com/Ryanjlowe/Personalize-car-campaign/master/sample_data"
+          S3_DATA_BUCKET: !Ref DataS3Bucket
+      Description: Helps set up the solution.
+      Handler: index.handler
+      MemorySize: 256
+      Role: !GetAtt CustomResourceHelperRole.Arn
+      Runtime: nodejs12.x
+      Timeout: 300
+      Code:
+        ZipFile: |
+          const AWS = require('aws-sdk');
+          const fs = require("fs");
+          const https = require("https");
+          const stream = require('stream');
+          const url = require('url');
+          const crypto = require("crypto");
+
+          AWS.config.update({
+            region: process.env.AWS_REGION
+          });
+
+          const s3 = new AWS.S3();
+
+          const uuidv4 = function() {
+            return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+              (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+            );
+          };
+
+          const transferFile = function(source, destKey) {
+
+            var url = `${process.env.SOURCE_FILE_BASE_URL}/${source}`;
+
+            var pass = new stream.PassThrough();
+            const p1 = s3.upload({
+              Bucket: process.env.S3_DATA_BUCKET,
+              Key: destKey,
+              Body: pass
+            }).promise();
+
+            var p2 = new Promise((resolve, reject) => {
+                https.get(url, response => {
+                    response.pipe(pass)
+                        .on("finish", function() {
+                          resolve();
+                        });
+                });
+            });
+
+            return Promise.all([p1, p2]);
+          };
+
+          exports.handler = (event, context, callback) => {
+
+            let responseStatus = 'FAILED';
+            let responseData = {};
+
+            if (event.ResourceProperties.CustomResourceAction === 'GenerateUUID') {
+
+                responseStatus = 'SUCCESS';
+                responseData = {
+                    UUID: uuidv4()
+                };
+                sendResponse(event, callback, context.logStreamName, responseStatus, responseData);
+
+            } else if (event.ResourceProperties.CustomResourceAction === 'SetupSampleFiles') {
+
+                Promise.all([
+                        transferFile('car_items.csv', 'car_items.csv'),
+                        transferFile('interactions.csv', 'interactions.csv'),
+                        transferFile('users.csv', 'users.csv')
+                    ])
+                    .then((results) => {
+                      responseStatus = 'SUCCESS';
+                      responseData = {
+                          success: true
+                      };
+                      sendResponse(event, callback, context.logStreamName, responseStatus, responseData);
+
+                    })
+                    .catch((results) => {
+
+                      console.log('Received Error: ' + JSON.stringify(results));
+
+                      responseStatus = 'FAILED';
+                      responseData = {
+                          success: false
+                      };
+                      sendResponse(event, callback, context.logStreamName, responseStatus, responseData);
+
+                    });
+            }
+          };
+
+          /**
+          * Sends a response to the pre-signed S3 URL
+          */
+          let sendResponse = function(event, callback, logStreamName, responseStatus, responseData) {
+            const responseBody = JSON.stringify({
+                Status: responseStatus,
+                Reason: `See the details in CloudWatch Log Stream: ${logStreamName}`,
+                PhysicalResourceId: logStreamName,
+                StackId: event.StackId,
+                RequestId: event.RequestId,
+                LogicalResourceId: event.LogicalResourceId,
+                Data: responseData,
+            });
+
+            console.log('RESPONSE BODY:\n', responseBody);
+            const parsedUrl = url.parse(event.ResponseURL);
+            const options = {
+                hostname: parsedUrl.hostname,
+                port: 443,
+                path: parsedUrl.path,
+                method: 'PUT',
+                headers: {
+                    'Content-Type': '',
+                    'Content-Length': responseBody.length,
+                }
+            };
+
+            const req = https.request(options, (res) => {
+                console.log('STATUS:', res.statusCode);
+                console.log('HEADERS:', JSON.stringify(res.headers));
+                callback(null, 'Successfully sent stack response!');
+            });
+
+            req.on('error', (err) => {
+                console.log('sendResponse Error:\n', err);
+                callback(err);
+            });
+
+            req.write(responseBody);
+            req.end();
+          };
+
+  CustomResourceHelperRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                  - "s3:PutObject"
+                Resource:
+                  - !Sub "arn:aws:s3:::${DataS3Bucket}"
+                  - !Sub "arn:aws:s3:::${DataS3Bucket}/*"
+              -
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutDestination
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
