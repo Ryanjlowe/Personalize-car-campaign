@@ -512,8 +512,8 @@ Resources:
                         "CreateUserDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
-                          "Parameters": {"SchemaName": "car-users-schema", "SchemaJSON": "users", "DatasetName": "car-users", "DatasetType": "USERS"},
-                          "Next": "IsUserDatasetFinished"
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "SchemaName": "car-users-schema", "SchemaJSON": "users", "DatasetName": "car-users", "DatasetType": "USERS"},
+                          "Next": "UserDatasetWait"
                         },
                         "UserDatasetWait": {
                           "Type": "Wait",
@@ -595,8 +595,8 @@ Resources:
                         "CreateInteractionDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
-                          "Parameters": {"SchemaName": "car-interactions-schema", "SchemaJSON": "interactions", "DatasetName": "car-interactions", "DatasetType": "INTERACTIONS"},
-                          "Next": "IsInteractionDatasetFinished"
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "SchemaName": "car-interactions-schema", "SchemaJSON": "interactions", "DatasetName": "car-interactions", "DatasetType": "INTERACTIONS"},
+                          "Next": "InteractionDatasetWait"
                         },
                         "InteractionDatasetWait": {
                           "Type": "Wait",
@@ -678,8 +678,8 @@ Resources:
                         "CreateItemDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
-                          "Parameters": {"SchemaName": "car-items-schema", "SchemaJSON": "car_items", "DatasetName": "car-items", "DatasetType": "ITEMS"},
-                          "Next": "IsItemDatasetFinished"
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "SchemaName": "car-items-schema", "SchemaJSON": "car_items", "DatasetName": "car-items", "DatasetType": "ITEMS"},
+                          "Next": "ItemDatasetWait"
                         },
                         "ItemDatasetWait": {
                           "Type": "Wait",
@@ -770,7 +770,7 @@ Resources:
                         "CreateSolution": {
                           "Type": "Task",
                           "Resource": "${CreateSolutionLambdaArn}",
-                          "Next": "IsSolutionFinished"
+                          "Next": "SolutionWait"
                         },
                         "SolutionWait": {
                           "Type": "Wait",
