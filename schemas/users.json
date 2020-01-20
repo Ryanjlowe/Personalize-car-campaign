@@ -14,12 +14,12 @@
       {
           "name": "GENDER",
           "type": "string",
-          "categorical": True
+          "categorical": true
       },
       {
           "name": "LOCATION",
           "type": "string",
-          "categorical": True
+          "categorical": true
       },
       {
           "name": "SALARY",

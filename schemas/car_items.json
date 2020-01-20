@@ -10,12 +10,12 @@
         {
             "name": "MAKE",
             "type": "string",
-            "categorical": True
+            "categorical": true
         },
         {
             "name": "MODEL",
             "type": "string",
-            "categorical": True
+            "categorical": true
         },
         {
             "name": "YEAR",
