@@ -3,14 +3,43 @@ Description: Build Step Functions to deploy a Personalize Campaign
 # Optimize Amazon Personalize Campaigns using Amazon Pinpoint Events
 
 Parameters:
-  Test:
+  DatasetGroupNameParameter:
     Type: String
-    Description: More to come surely
+    Default: "car-dg"
+    Description: Name of the Personalize Dataset Group
+  UserSchemaNameParameter:
+    Type: String
+    Default: "car-users-schema"
+    Description: Name of the Personalize User Schema
+  InteractionSchemaNameParameter:
+    Type: String
+    Default: "car-interactions-schema"
+    Description: Name of the Presonalize Interaction Schema
+  ItemSchemaNameParameter:
+    Type: String
+    Default: "car-items-schema"
+    Description: Name of the Personalize Item Schema
+  UserDatasetNameParameter:
+    Type: String
+    Default: "car-users"
+    Description: Name of the Personalize User Schema
+  InteractionDatasetNameParameter:
+    Type: String
+    Default: "car-interactions"
+    Description: Name of the Presonalize Interaction Schema
+  ItemDatasetNameParameter:
+    Type: String
+    Default: "car-items"
+    Description: Name of the Personalize Item Schema
+  CampaignNameParameter:
+    Type: String
+    Default: "car-hrnn"
+    Description: Name of the Personalize Campaign
 
 
 Resources:
 
-  DataS3Bucket:
+  PersonalizeDataS3Bucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Metadata:
@@ -74,6 +103,24 @@ Resources:
             StringEquals:
               "s3:x-amz-acl": "bucket-owner-full-control"
 
+  DataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PersonalizeDataS3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service: "personalize.amazonaws.com"
+            Action:
+              - "s3:GetObject"
+              - "s3:ListBucket"
+            Resource:
+              - !Sub "arn:aws:s3:::${PersonalizeDataS3Bucket}"
+              - !Sub "arn:aws:s3:::${PersonalizeDataS3Bucket}/*"
+
   CreateDatasetGroupLambda:
     Type: AWS::Lambda::Function
     Properties:
@@ -83,7 +130,7 @@ Resources:
       Timeout: 60
       Environment:
         Variables:
-          DATASET_GROUP_NAME: "car-dg"
+          DATASET_GROUP_NAME: !Ref DatasetGroupNameParameter
       Code:
         ZipFile: |
           import boto3
@@ -208,7 +255,7 @@ Resources:
       Environment:
         Variables:
           IMPORT_ROLE: !GetAtt PersonalizeDatasetImportRole.Arn
-          S3_BUCKET: !Ref DataS3Bucket
+          S3_BUCKET: !Ref PersonalizeDataS3Bucket
       Code:
         ZipFile: |
           import boto3
@@ -284,14 +331,13 @@ Resources:
 
             response = personalize.create_solution(
               name = os.environ.get('SOLUTION_NAME'),
-              datasetGroupArn = event['DatasetGroupArn'],
+              datasetGroupArn = event[0]['DatasetGroupArn'],
               recipeArn = 'arn:aws:personalize:::recipe/aws-hrnn'
             )
 
             return {
-              'DatasetGroupArn': event['DatasetGroupArn'],
-              'DatasetArn': event['DatasetArn'],
-              'DatasetImportJobArn': event['DatasetImportJobArn'],
+              'DatasetGroupArn': event[0]['DatasetGroupArn'],
+              'DatasetArn': event[0]['DatasetArn'],
               'SolutionArn': response['solutionArn']
             }
 
@@ -320,9 +366,8 @@ Resources:
             return {
               'DatasetGroupArn': event['DatasetGroupArn'],
               'DatasetArn': event['DatasetArn'],
-              'DatasetImportJobArn': event['DatasetImportJobArn'],
               'SolutionArn': event['SolutionArn'],
-              'SolutionStatus': event['solution']['status']
+              'SolutionStatus': response['solution']['status']
             }
 
   CreateSolutionVersionLambda:
@@ -350,7 +395,6 @@ Resources:
             return {
               'DatasetGroupArn': event['DatasetGroupArn'],
               'DatasetArn': event['DatasetArn'],
-              'DatasetImportJobArn': event['DatasetImportJobArn'],
               'SolutionArn': event['SolutionArn'],
               'SolutionVersionArn': response['solutionVersionArn']
             }
@@ -380,7 +424,6 @@ Resources:
             return {
               'DatasetGroupArn': event['DatasetGroupArn'],
               'DatasetArn': event['DatasetArn'],
-              'DatasetImportJobArn': event['DatasetImportJobArn'],
               'SolutionArn': event['SolutionArn'],
               'SolutionVersionArn': event['SolutionVersionArn'],
               'SolutionVersionStatus': response['solutionVersion']['status']
@@ -398,7 +441,7 @@ Resources:
       Environment:
         Variables:
           MIN_PROVISIONED_TPS: 1
-          CAMPAIGN_NAME: "car-hrnn"
+          CAMPAIGN_NAME: !Ref CampaignNameParameter
       Code:
         ZipFile: |
           import boto3
@@ -417,7 +460,6 @@ Resources:
             return {
               'DatasetGroupArn': event['DatasetGroupArn'],
               'DatasetArn': event['DatasetArn'],
-              'DatasetImportJobArn': event['DatasetImportJobArn'],
               'SolutionArn': event['SolutionArn'],
               'SolutionVersionArn': event['SolutionVersionArn'],
               'CampaignArn': response['campaignArn']
@@ -448,7 +490,6 @@ Resources:
             return {
               'DatasetGroupArn': event['DatasetGroupArn'],
               'DatasetArn': event['DatasetArn'],
-              'DatasetImportJobArn': event['DatasetImportJobArn'],
               'SolutionArn': event['SolutionArn'],
               'SolutionVersionArn': event['SolutionVersionArn'],
               'CampaignArn': event['CampaignArn']
@@ -512,7 +553,7 @@ Resources:
                         "CreateUserDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
-                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "SchemaName": "car-users-schema", "SchemaJSON": "users", "DatasetName": "car-users", "DatasetType": "USERS"},
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "SchemaName": "${UserSchemaNameParameter}", "SchemaJSON": "users", "DatasetName": "${UserDatasetNameParameter}", "DatasetType": "USERS"},
                           "Next": "UserDatasetWait"
                         },
                         "UserDatasetWait": {
@@ -554,7 +595,7 @@ Resources:
                         },
                         "UserImportWait": {
                           "Type": "Wait",
-                          "Seconds": 30,
+                          "Seconds": 120,
                           "Next": "UserImportStatus"
                         },
                         "UserImportStatus": {
@@ -595,7 +636,7 @@ Resources:
                         "CreateInteractionDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
-                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "SchemaName": "car-interactions-schema", "SchemaJSON": "interactions", "DatasetName": "car-interactions", "DatasetType": "INTERACTIONS"},
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "SchemaName": "${InteractionSchemaNameParameter}", "SchemaJSON": "interactions", "DatasetName": "${InteractionDatasetNameParameter}", "DatasetType": "INTERACTIONS"},
                           "Next": "InteractionDatasetWait"
                         },
                         "InteractionDatasetWait": {
@@ -678,7 +719,7 @@ Resources:
                         "CreateItemDataset": {
                           "Type": "Task",
                           "Resource": "${CreateDatasetLambdaArn}",
-                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "SchemaName": "car-items-schema", "SchemaJSON": "car_items", "DatasetName": "car-items", "DatasetType": "ITEMS"},
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "SchemaName": "${ItemSchemaNameParameter}", "SchemaJSON": "items", "DatasetName": "${ItemDatasetNameParameter}", "DatasetType": "ITEMS"},
                           "Next": "ItemDatasetWait"
                         },
                         "ItemDatasetWait": {
@@ -715,7 +756,7 @@ Resources:
                          "ItemDatasetImport": {
                           "Type": "Task",
                           "Resource": "${DataSetImportLambdaArn}",
-                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "DatasetArn.$": "$.DatasetArn", "ImportCSVFile": "car_items"},
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "DatasetArn.$": "$.DatasetArn", "ImportCSVFile": "items"},
                           "Next": "ItemImportWait"
                         },
                         "ItemImportWait": {
@@ -788,12 +829,12 @@ Resources:
                           "Choices": [
                             {
                               "Variable": "$.SolutionStatus",
-                              "StringEquals": "FAILED",
+                              "StringEquals": "CREATE FAILED",
                               "Next": "SolutionFailed"
                             },
                             {
                               "Variable": "$.SolutionStatus",
-                              "StringEquals": "COMPLETED",
+                              "StringEquals": "ACTIVE",
                               "Next": "CreateSolutionVersion"
                             }
                           ]
@@ -813,7 +854,7 @@ Resources:
                         },
                         "SolutionVersionWait": {
                           "Type": "Wait",
-                          "Seconds": 30,
+                          "Seconds": 120,
                           "Next": "SolutionVersionStatus"
                         },
                         "SolutionVersionStatus": {
@@ -827,12 +868,12 @@ Resources:
                           "Choices": [
                             {
                               "Variable": "$.SolutionVersionStatus",
-                              "StringEquals": "FAILED",
+                              "StringEquals": "CREATE FAILED",
                               "Next": "SolutionVersionFailed"
                             },
                             {
                               "Variable": "$.SolutionVersionStatus",
-                              "StringEquals": "COMPLETED",
+                              "StringEquals": "ACTIVE",
                               "Next": "SolutionCampaign"
                             }
                           ]
@@ -867,12 +908,12 @@ Resources:
                           "Choices": [
                             {
                               "Variable": "$.CampaignStatus",
-                              "StringEquals": "FAILED",
+                              "StringEquals": "CREATE FAILED",
                               "Next": "CampaignFailed"
                             },
                             {
                               "Variable": "$.CampaignStatus",
-                              "StringEquals": "COMPLETED",
+                              "StringEquals": "ACTIVE",
                               "Next": "CampaignEnd"
                             }
                           ]
@@ -933,6 +974,8 @@ Resources:
                   - !GetAtt DataSetImportStatusLambda.Arn
                   - !GetAtt CreateSolutionLambda.Arn
                   - !GetAtt CreateSolutionStatusLambda.Arn
+                  - !GetAtt CreateSolutionVersionLambda.Arn
+                  - !GetAtt CreateSolutionVersionStatusLambda.Arn
                   - !GetAtt CreateCampaignLambda.Arn
                   - !GetAtt CreateCampaignStatusLambda.Arn
 
@@ -1274,7 +1317,10 @@ Resources:
                 Effect: "Allow"
                 Action:
                   - "personalize:DescribeSolutionVersion"
-                Resource: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution-version/*"
+                Resource:
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution-version/*"
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution/*"
+
 
   CreateCampaignLambdaRole:
     Type: AWS::IAM::Role
@@ -1353,6 +1399,9 @@ Resources:
             Action:
               - 'sts:AssumeRole'
       Path: "/"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonPersonalizeFullAccess"
+        - "arn:aws:iam::aws:policy/CloudWatchFullAccess"
       Policies:
         -
           PolicyName: "root"
@@ -1361,12 +1410,14 @@ Resources:
             Statement:
               -
                 Effect: "Allow"
+                # Principal:
+                #   Service: "personalize.amazonaws.com"
                 Action:
                   - s3:GetObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub "arn:aws:s3:::${DataS3Bucket}"
-                  - !Sub "arn:aws:s3:::${DataS3Bucket}/*"
+                  - !Sub "arn:aws:s3:::${PersonalizeDataS3Bucket}"
+                  - !Sub "arn:aws:s3:::${PersonalizeDataS3Bucket}/*"
 
 #####
 
@@ -1382,7 +1433,7 @@ Resources:
       Environment:
         Variables:
           SOURCE_FILE_BASE_URL: "https://raw.githubusercontent.com/Ryanjlowe/Personalize-car-campaign/master/sample_data"
-          S3_DATA_BUCKET: !Ref DataS3Bucket
+          S3_DATA_BUCKET: !Ref PersonalizeDataS3Bucket
       Description: Helps set up the solution.
       Handler: index.handler
       MemorySize: 256
@@ -1449,7 +1500,7 @@ Resources:
             } else if (event.ResourceProperties.CustomResourceAction === 'SetupSampleFiles') {
 
                 Promise.all([
-                        transferFile('car_items.csv', 'car_items.csv'),
+                        transferFile('items.csv', 'items.csv'),
                         transferFile('interactions.csv', 'interactions.csv'),
                         transferFile('users.csv', 'users.csv')
                     ])
@@ -1541,8 +1592,8 @@ Resources:
                   - "s3:ListBucket"
                   - "s3:PutObject"
                 Resource:
-                  - !Sub "arn:aws:s3:::${DataS3Bucket}"
-                  - !Sub "arn:aws:s3:::${DataS3Bucket}/*"
+                  - !Sub "arn:aws:s3:::${PersonalizeDataS3Bucket}"
+                  - !Sub "arn:aws:s3:::${PersonalizeDataS3Bucket}/*"
               -
                 Effect: Allow
                 Action:
