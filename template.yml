@@ -219,12 +219,12 @@ Resources:
           def lambda_handler(event, context):
 
             response = personalize.create_dataset_import_job(
-              jobName = event['ImportCSVFile'] + '-importjob-' + event['DatasetGroupArn'],
-              datasetArn = event['DatasetGroupArn'],
+              jobName = event['ImportCSVFile'] + '-importjob',
+              datasetArn = event['DatasetArn'],
               dataSource = {
-                'dataLocation': 's3://' + process.env.SOLUTION_BUCKET + '/' + event['ImportCSVFile'] + '.csv'
+                'dataLocation': 's3://' + os.environ.get('S3_BUCKET') + '/' + event['ImportCSVFile'] + '.csv'
               },
-              roleArn: os.environ.get('IMPORT_ROLE')
+              roleArn = os.environ.get('IMPORT_ROLE')
             )
 
 
@@ -549,7 +549,7 @@ Resources:
                         "UserDatasetImport": {
                           "Type": "Task",
                           "Resource": "${DataSetImportLambdaArn}",
-                          "Parameters": {"ImportCSVFile": "users"},
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "DatasetArn.$": "$.DatasetArn", "ImportCSVFile": "users"},
                           "Next": "UserImportWait"
                         },
                         "UserImportWait": {
@@ -632,7 +632,7 @@ Resources:
                         "InteractionDatasetImport": {
                           "Type": "Task",
                           "Resource": "${DataSetImportLambdaArn}",
-                          "Parameters": {"ImportCSVFile": "interactions"},
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "DatasetArn.$": "$.DatasetArn", "ImportCSVFile": "interactions"},
                           "Next": "InteractionImportWait"
                         },
                         "InteractionImportWait": {
@@ -715,7 +715,7 @@ Resources:
                          "ItemDatasetImport": {
                           "Type": "Task",
                           "Resource": "${DataSetImportLambdaArn}",
-                          "Parameters": {"ImportCSVFile": "car_items"},
+                          "Parameters": {"DatasetGroupArn.$": "$.DatasetGroupArn", "DatasetArn.$": "$.DatasetArn", "ImportCSVFile": "car_items"},
                           "Next": "ItemImportWait"
                         },
                         "ItemImportWait": {
@@ -809,7 +809,7 @@ Resources:
                         "CreateSolutionVersion": {
                           "Type": "Task",
                           "Resource": "${CreateSolutionVersionLambdaArn}",
-                          "Next": "IsSolutionVersionFinished"
+                          "Next": "SolutionVersionWait"
                         },
                         "SolutionVersionWait": {
                           "Type": "Wait",
@@ -1105,7 +1105,9 @@ Resources:
                 Effect: "Allow"
                 Action:
                   - "personalize:CreateDatasetImportJob"
-                Resource: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset/*"
+                Resource:
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset/*"
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset-group/*"
               -
                 Effect: "Allow"
                 Action: "iam:PassRole"
