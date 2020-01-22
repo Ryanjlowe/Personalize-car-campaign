@@ -6,4 +6,6 @@ This repo uses the dataset from the [Personalize-car-search repo](https://github
 ![Screenshot](stepfunctions_graph.png)
 
 ## Deploy
-Download the [Template](https://raw.githubusercontent.com/Ryanjlowe/Personalize-car-campaign/master/template.yml)
+1. Download the [Template](https://raw.githubusercontent.com/Ryanjlowe/Personalize-car-campaign/master/template.yml) into CloudFormation.
+
+2. Manually execute the Step Functions State Machine.  This will take a little over an hour to execute and run.
