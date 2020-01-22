@@ -1,6 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: Build Step Functions to deploy a Personalize Campaign
-# Optimize Amazon Personalize Campaigns using Amazon Pinpoint Events
 
 Parameters:
   DatasetGroupNameParameter:
