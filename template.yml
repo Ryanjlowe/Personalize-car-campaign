@@ -471,7 +471,7 @@ Resources:
               'DatasetArn': event['DatasetArn'],
               'SolutionArn': event['SolutionArn'],
               'SolutionVersionArn': event['SolutionVersionArn'],
-              'CampaignArn': event['CampaignArn']
+              'CampaignArn': event['CampaignArn'],
               'CampaignStatus': response['campaign']['status']
             }
 
@@ -574,7 +574,7 @@ Resources:
                         },
                         "UserImportWait": {
                           "Type": "Wait",
-                          "Seconds": 120,
+                          "Seconds": 150,
                           "Next": "UserImportStatus"
                         },
                         "UserImportStatus": {
@@ -657,7 +657,7 @@ Resources:
                         },
                         "InteractionImportWait": {
                           "Type": "Wait",
-                          "Seconds": 30,
+                          "Seconds": 150,
                           "Next": "InteractionImportStatus"
                         },
                         "InteractionImportStatus": {
@@ -740,7 +740,7 @@ Resources:
                         },
                         "ItemImportWait": {
                           "Type": "Wait",
-                          "Seconds": 30,
+                          "Seconds": 150,
                           "Next": "ItemImportStatus"
                         },
                         "ItemImportStatus": {
@@ -833,7 +833,7 @@ Resources:
                         },
                         "SolutionVersionWait": {
                           "Type": "Wait",
-                          "Seconds": 120,
+                          "Seconds": 200,
                           "Next": "SolutionVersionStatus"
                         },
                         "SolutionVersionStatus": {
@@ -873,7 +873,7 @@ Resources:
                         },
                         "CampaignWait": {
                           "Type": "Wait",
-                          "Seconds": 30,
+                          "Seconds": 150,
                           "Next": "CampaignStatus"
                         },
                         "CampaignStatus": {
@@ -1368,6 +1368,7 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution-version/*"
                   - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution/*"
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:campaign/*"
 
   PersonalizeDatasetImportRole:
     Type: AWS::IAM::Role
