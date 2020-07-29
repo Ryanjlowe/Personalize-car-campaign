@@ -1057,6 +1057,7 @@ Resources:
                 Resource:
                   - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset-group/*"
                   - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:schema/*"
+                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:*"
               -
                 Effect: "Allow"
                 Action:
@@ -1127,8 +1128,7 @@ Resources:
                 Action:
                   - "personalize:CreateDatasetImportJob"
                 Resource:
-                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset/*"
-                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset-group/*"
+                  - "*"
               -
                 Effect: "Allow"
                 Action: "iam:PassRole"
@@ -1198,8 +1198,7 @@ Resources:
                 Action:
                   - "personalize:CreateSolution"
                 Resource:
-                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:dataset-group/*"
-                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:recipe/*"
+                  - "*"
 
   CreateSolutionStatusLambdaRole:
     Type: AWS::IAM::Role
@@ -1263,7 +1262,7 @@ Resources:
                 Effect: "Allow"
                 Action:
                   - "personalize:CreateSolutionVersion"
-                Resource: !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution/*"
+                Resource: "*"
 
   CreateSolutionVersionStatusLambdaRole:
     Type: AWS::IAM::Role
@@ -1331,8 +1330,7 @@ Resources:
                 Action:
                   - "personalize:CreateCampaign"
                 Resource:
-                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution-version/*"
-                  - !Sub "arn:aws:personalize:${AWS::Region}:${AWS::AccountId}:solution/*"
+                  - "*"
 
   CreateCampaignStatusLambdaRole:
     Type: AWS::IAM::Role
